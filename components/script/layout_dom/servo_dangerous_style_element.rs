@@ -566,6 +566,8 @@ impl<'dom> style::dom::TElement for ServoDangerousStyleElement<'dom> {
                 let old_column = old.get_column();
                 let new_column = new.get_column();
                 if old_box.overflow_x.is_scrollable() != new_box.overflow_x.is_scrollable() ||
+                    old_box.container_type.is_size_container_type() !=
+                        new_box.container_type.is_size_container_type() ||
                     old_column.is_multicol() != new_column.is_multicol() ||
                     old_column.column_span != new_column.column_span ||
                     alignment_establishes_new_block_formatting_context(old) !=

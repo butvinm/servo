@@ -12,6 +12,7 @@ use euclid::Point2D;
 use layout_api::LayoutDamage;
 use malloc_size_of_derive::MallocSizeOf;
 use servo_arc::Arc as ServoArc;
+use style::Zero;
 use style::computed_values::position::T as Position;
 use style::logical_geometry::WritingMode;
 use style::properties::ComputedValues;
@@ -28,7 +29,10 @@ use crate::fragment_tree::{
 };
 use crate::geom::LogicalSides1D;
 use crate::positioned::{PositioningContext, relative_adjustement};
-use crate::sizing::{ComputeInlineContentSizes, InlineContentSizesResult, SizeConstraint};
+use crate::sizing::{
+    ComputeInlineContentSizes, ContentSizes, InlineContentSizesResult, SizeConstraint,
+};
+use crate::style_ext::ComputedValuesExt;
 use crate::traversal::ElementDamageSet;
 use crate::{ConstraintSpace, ContainingBlock, ContainingBlockSize};
 
@@ -100,6 +104,19 @@ impl LayoutBoxBase {
         constraint_space: &ConstraintSpace,
         layout_box: &impl ComputeInlineContentSizes,
     ) -> InlineContentSizesResult {
+        // Inline-size containment: the intrinsic inline sizes are computed as if the box had no content.
+        // `contain-intrinsic-size` is not supported yet, so for block and flex containers that means zero.
+        // <https://drafts.csswg.org/css-contain-2/#containment-inline-size>
+        if self
+            .style
+            .has_empty_inline_content_sizes_from_containment(self.base_fragment_info.flags)
+        {
+            return InlineContentSizesResult {
+                sizes: ContentSizes::zero(),
+                depends_on_block_constraints: false,
+            };
+        }
+
         let mut cache = self.cached_inline_content_size.borrow_mut();
         if let Some(cached_inline_content_size) = cache.as_ref() {
             let (previous_cb_block_size, result) = **cached_inline_content_size;

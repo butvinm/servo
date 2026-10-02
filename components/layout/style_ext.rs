@@ -378,6 +378,8 @@ pub(crate) trait ComputedValuesExt {
         writing_mode: WritingMode,
     ) -> bool;
     fn is_inline_box(&self, fragment_flags: FragmentFlags) -> bool;
+    fn is_size_container(&self, fragment_flags: FragmentFlags) -> bool;
+    fn has_empty_inline_content_sizes_from_containment(&self, fragment_flags: FragmentFlags) -> bool;
     fn is_atomic_inline_level(&self, fragment_flags: FragmentFlags) -> bool;
     fn overflow_direction(&self) -> OverflowDirection;
     fn to_bidi_level(&self) -> Level;
@@ -543,6 +545,47 @@ impl ComputedValuesExt for ComputedValues {
                     FragmentFlags::IS_FLEX_OR_GRID_ITEM,
             )) ||
             matches!(self.pseudo(), Some(PseudoElement::FirstLetter))
+    }
+
+    /// Whether this box is a size query container (`container-type: inline-size` or `size`), which makes it an independent formatting context.
+    /// Unlike `contain: layout`, it creates no stacking context or containing block.
+    /// <https://drafts.csswg.org/css-conditional-5/#container-type>
+    fn is_size_container(&self, fragment_flags: FragmentFlags) -> bool {
+        if !self.get_box().container_type.is_size_container_type() {
+            return false;
+        }
+        if self.is_inline_box(fragment_flags) {
+            return false;
+        }
+        !matches!(
+            self.get_box().display.inside(),
+            stylo::DisplayInside::TableColumn |
+                stylo::DisplayInside::TableColumnGroup |
+                stylo::DisplayInside::TableRow |
+                stylo::DisplayInside::TableRowGroup |
+                stylo::DisplayInside::TableHeaderGroup |
+                stylo::DisplayInside::TableFooterGroup |
+                stylo::DisplayInside::TableCell
+        )
+    }
+
+    /// Whether the inline content sizes of this box are zero because of inline-size containment from `container-type`.
+    /// Only block and flex containers are handled: for them "sized as if empty" means zero.
+    /// Grid and multicol containers keep their own track and column sizes when empty, so they are left content-sized for now.
+    /// Size containment has no effect on tables.
+    /// Replaced elements and widgets are left alone too, because their authored sizes and aspect ratio still apply when they are sized as if empty.
+    /// Block-axis containment for `container-type: size` is not implemented yet.
+    /// <https://drafts.csswg.org/css-contain-2/#containment-inline-size>
+    fn has_empty_inline_content_sizes_from_containment(&self, fragment_flags: FragmentFlags) -> bool {
+        !fragment_flags.intersects(FragmentFlags::IS_REPLACED | FragmentFlags::IS_WIDGET) &&
+            self.is_size_container(fragment_flags) &&
+            !self.get_column().is_multicol() &&
+            matches!(
+                self.get_box().display.inside(),
+                stylo::DisplayInside::Flow |
+                    stylo::DisplayInside::FlowRoot |
+                    stylo::DisplayInside::Flex
+            )
     }
 
     fn is_atomic_inline_level(&self, fragment_flags: FragmentFlags) -> bool {
@@ -745,8 +788,10 @@ impl ComputedValuesExt for ComputedValues {
             return true;
         }
 
+        // Size query containers establish an independent formatting context.
+        // <https://drafts.csswg.org/css-conditional-5/#container-type>
         // TODO: We need to handle CSS Contain here.
-        false
+        self.is_size_container(fragment_flags)
     }
 
     /// Whether or not the `overflow` value of this style establishes a scroll container.
