@@ -2690,6 +2690,13 @@ impl Window {
                 document.dirty_all_nodes(cx.no_gc());
             }
 
+            // `:has()` can make any element depend on its descendants and later siblings,
+            // and relative selector invalidation is not implemented yet,
+            // so rematch selectors on the whole document whenever anything needs a restyle.
+            if pref!(layout_css_has_selector_enabled) {
+                document.dirty_all_nodes(cx.no_gc());
+            }
+
             let stylesheets_changed = document.flush_stylesheets_for_reflow();
             let pending_restyles = document.drain_pending_restyles(cx.no_gc());
             let dirty_root = document

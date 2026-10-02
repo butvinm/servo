@@ -66,6 +66,10 @@ pub fn set(preferences: Preferences) {
         preferences.layout_css_ellipse_corners_enabled
     );
     stylo_static_prefs::set_pref!(
+        "layout.css.has-selector.enabled",
+        preferences.layout_css_has_selector_enabled
+    );
+    stylo_static_prefs::set_pref!(
         "layout.css.progress-function.enabled",
         preferences.layout_css_progress_function_enabled
     );
@@ -312,6 +316,10 @@ pub struct Preferences {
     pub layout_css_alpha_color_function_enabled: bool,
     pub layout_css_attr_enabled: bool,
     pub layout_css_ellipse_corners_enabled: bool,
+    /// Enables the `:has()` selector.
+    /// Every restyle then rematches selectors on the whole document, because relative selector invalidation is not implemented yet.
+    /// Set it at startup only: rules parsed while it was enabled survive turning it off.
+    pub layout_css_has_selector_enabled: bool,
     pub layout_css_progress_function_enabled: bool,
     pub layout_style_sharing_cache_enabled: bool,
     pub layout_threads: i64,
@@ -562,6 +570,7 @@ impl Preferences {
             layout_css_alpha_color_function_enabled: false,
             layout_css_attr_enabled: false,
             layout_css_ellipse_corners_enabled: false,
+            layout_css_has_selector_enabled: false,
             layout_css_progress_function_enabled: false,
             layout_grid_enabled: true,
             layout_style_sharing_cache_enabled: true,
