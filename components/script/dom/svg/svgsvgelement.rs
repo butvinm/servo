@@ -101,8 +101,12 @@ impl SVGSVGElement {
             let mut inline_style = cloned_element
                 .get_string_attribute(&local_name!("style"))
                 .to_string();
+            // resvg drops the whole declaration list when it starts with an empty declaration, so only add a separator after existing text.
+            if !inline_style.trim().is_empty() && !inline_style.trim_end().ends_with(';') {
+                inline_style.push(';');
+            }
             inline_style.push_str(&format!(
-                ";color:{} !important;",
+                "color:{} !important;",
                 style.clone_color().to_css_string()
             ));
             let inherited_svg = style.get_inherited_svg();
