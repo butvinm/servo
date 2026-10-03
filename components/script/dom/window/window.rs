@@ -3832,8 +3832,9 @@ impl Window {
         for node in pending_svg_element_for_serialization.into_iter() {
             let node = unsafe { from_untrusted_node_address(node) };
             let svg = node.downcast::<SVGSVGElement>().unwrap();
-            svg.serialize_and_cache_subtree(cx);
-            node.dirty(cx.no_gc(), NodeDamage::Other);
+            if svg.serialize_and_cache_subtree(cx) {
+                node.dirty(cx.no_gc(), NodeDamage::Other);
+            }
         }
     }
 

@@ -76,7 +76,7 @@ impl SVGSVGElement {
         )
     }
 
-    pub(crate) fn serialize_and_cache_subtree(&self, cx: &mut js::context::JSContext) {
+    pub(crate) fn serialize_and_cache_subtree(&self, cx: &mut js::context::JSContext) -> bool {
         let document_fragment = self.owner_document().CreateDocumentFragment(cx);
         let cloned_node = Node::clone(
             cx,
@@ -91,8 +91,7 @@ impl SVGSVGElement {
             .is_err()
         {
             error!("Unable to clone SVG tree");
-            *self.cached_serialized_data_url.borrow_mut() = Some(Err(()));
-            return;
+            return self.cache_serialized_data_url(Err(()));
         }
 
         // Keep definition trees unchanged so paint can still inherit from each use instance.
@@ -122,24 +121,32 @@ impl SVGSVGElement {
         self.process_use_elements(cx, &cloned_node);
 
         let Ok(xml_source) = cloned_node.xml_serialize(TraversalScope::IncludeNode) else {
-            *self.cached_serialized_data_url.borrow_mut() = Some(Err(()));
-            return;
+            return self.cache_serialized_data_url(Err(()));
         };
 
         let xml_source: String = xml_source.into();
         let base64_encoded_source = base64::engine::general_purpose::STANDARD.encode(xml_source);
         let data_url = format!("data:image/svg+xml;base64,{base64_encoded_source}");
         match ServoUrl::parse(&data_url) {
-            Ok(url) => {
-                if self.cached_serialized_data_url.borrow().as_ref() == Some(&Ok(url.clone())) {
-                    return;
-                }
-                // Style-only changes must evict the old raster as well as replace the serialized source.
-                self.invalidate_cached_serialized_subtree_and_rasterization_result(cx.no_gc());
-                *self.cached_serialized_data_url.borrow_mut() = Some(Ok(url));
+            Ok(url) => self.cache_serialized_data_url(Ok(url)),
+            Err(error) => {
+                error!("Unable to parse serialized SVG data url: {error}");
+                self.cache_serialized_data_url(Err(()))
             },
-            Err(error) => error!("Unable to parse serialized SVG data url: {error}"),
-        };
+        }
+    }
+
+    /// Report whether layout needs to rebuild the replaced image. The data URL
+    /// identifies immutable source bytes; replacing it does not invalidate the
+    /// old image. In-flight rasterizations must finish and notify their listeners,
+    /// and another SVG element may still use the old source.
+    fn cache_serialized_data_url(&self, source: Result<ServoUrl, ()>) -> bool {
+        let mut cached_source = self.cached_serialized_data_url.borrow_mut();
+        if cached_source.as_ref() == Some(&source) {
+            return false;
+        }
+        *cached_source = Some(source);
+        true
     }
 
     fn process_use_elements(&self, cx: &mut JSContext, root_node: &Node) {

@@ -472,9 +472,6 @@ impl SvgRasterizationTaskStore {
         self.0.remove(&(pending_image_id, size));
     }
 
-    fn remove_all_for_id(&mut self, pending_image_id: PendingImageId) {
-        self.0.retain(|(id, _size)| *id != pending_image_id);
-    }
 }
 
 /// ## Image cache implementation.
@@ -1020,6 +1017,15 @@ impl ImageCache for ImageCacheImpl {
             return None;
         };
 
+        if let Some(svg_id) = svg_id {
+            // A new source does not invalidate the old content-addressed image.
+            // Other elements can share its image ID, and pending raster tasks
+            // must retain their listeners until completion. Keep old generations
+            // in the document image cache instead of reclaiming them here.
+            // Update the association even when the new raster is already cached.
+            self.svg_id_image_id_map.lock().insert(svg_id, image_id);
+        }
+
         // This early return relies on the fact that the result of image rasterization cannot
         // ever be `None`. If that were the case we would need to check whether the entry
         // in the `HashMap` was `Occupied` or not.
@@ -1029,20 +1035,6 @@ impl ImageCache for ImageCacheImpl {
             .or_default();
         if let Some(result) = entry.result.as_ref() {
             return Some(result.clone());
-        }
-
-        if let Some(svg_id) = svg_id &&
-            let Some(old_mapped_image_id) =
-                self.svg_id_image_id_map.lock().insert(svg_id, image_id) &&
-            old_mapped_image_id != image_id
-        {
-            store.vector_images.remove(&old_mapped_image_id);
-            store
-                .rasterized_vector_images
-                .remove(&(old_mapped_image_id, requested_size));
-            store
-                .svg_rasterization_task_store
-                .remove_all_for_id(old_mapped_image_id);
         }
 
         if store
