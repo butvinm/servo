@@ -14,8 +14,9 @@ use servo_url::ServoUrl;
 use style::attr::AttrValue;
 use style::parser::ParserContext;
 use style::stylesheets::Origin;
+use style::values::computed::svg::SVGPaintKind;
 use style::values::specified::LengthPercentage;
-use style_traits::ParsingMode;
+use style_traits::{ParsingMode, ToCss};
 use uuid::Uuid;
 use xml5ever::serialize::TraversalScope;
 
@@ -94,6 +95,26 @@ impl SVGSVGElement {
             return;
         }
 
+        // Keep definition trees unchanged so paint can still inherit from each use instance.
+        if let Some(style) = self.upcast::<Element>().style_without_layout() {
+            let cloned_element = cloned_node.downcast::<Element>().unwrap();
+            let mut inline_style = cloned_element
+                .get_string_attribute(&local_name!("style"))
+                .to_string();
+            inline_style.push_str(&format!(
+                ";color:{} !important;",
+                style.clone_color().to_css_string()
+            ));
+            let inherited_svg = style.get_inherited_svg();
+            for (name, paint) in [("fill", &inherited_svg.fill), ("stroke", &inherited_svg.stroke)] {
+                // Paint-server URLs need document-to-image URL rebasing; preserve their existing attributes for now.
+                if matches!(&paint.kind, SVGPaintKind::None | SVGPaintKind::Color(..)) {
+                    inline_style.push_str(&format!("{name}:{} !important;", paint.to_css_string()));
+                }
+            }
+            cloned_element.set_string_attribute(cx, &local_name!("style"), inline_style.into());
+        }
+
         self.process_use_elements(cx, &cloned_node);
 
         let Ok(xml_source) = cloned_node.xml_serialize(TraversalScope::IncludeNode) else {
@@ -105,7 +126,14 @@ impl SVGSVGElement {
         let base64_encoded_source = base64::engine::general_purpose::STANDARD.encode(xml_source);
         let data_url = format!("data:image/svg+xml;base64,{base64_encoded_source}");
         match ServoUrl::parse(&data_url) {
-            Ok(url) => *self.cached_serialized_data_url.borrow_mut() = Some(Ok(url)),
+            Ok(url) => {
+                if self.cached_serialized_data_url.borrow().as_ref() == Some(&Ok(url.clone())) {
+                    return;
+                }
+                // Style-only changes must evict the old raster as well as replace the serialized source.
+                self.invalidate_cached_serialized_subtree_and_rasterization_result(cx.no_gc());
+                *self.cached_serialized_data_url.borrow_mut() = Some(Ok(url));
+            },
             Err(error) => error!("Unable to parse serialized SVG data url: {error}"),
         };
     }

@@ -18,7 +18,6 @@ use net_traits::image_cache::{
 use net_traits::request::InternalRequest;
 use parking_lot::{Mutex, RwLock};
 use pixels::RasterImage;
-use script::layout_dom::ServoLayoutNode;
 use servo_base::id::PainterId;
 use servo_url::{ImmutableOrigin, ServoUrl};
 use style::context::SharedStyleContext;
@@ -272,10 +271,12 @@ impl ImageResolver {
         result
     }
 
-    pub(crate) fn queue_svg_element_for_serialization(&self, element: ServoLayoutNode<'_>) {
-        self.pending_svg_elements_for_serialization
-            .lock()
-            .push(element.opaque().into())
+    pub(crate) fn queue_svg_element_for_serialization<'dom>(&self, element: impl LayoutNode<'dom>) {
+        let address = element.opaque().into();
+        let mut pending = self.pending_svg_elements_for_serialization.lock();
+        if !pending.contains(&address) {
+            pending.push(address);
+        }
     }
 
     pub(crate) fn resolve_image<'a>(

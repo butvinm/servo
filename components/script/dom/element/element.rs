@@ -1074,10 +1074,15 @@ impl Element {
 
     pub(crate) fn style(&self) -> Option<ServoArc<ComputedValues>> {
         self.owner_window().layout_reflow(QueryMsg::StyleQuery);
+        self.style_without_layout()
+    }
+
+    // Only use after a completed style traversal; SVG serialization must not recursively flush layout.
+    pub(crate) fn style_without_layout(&self) -> Option<ServoArc<ComputedValues>> {
         self.style_data
             .borrow()
             .as_ref()
-            .map(|data| data.element_data.borrow().styles.primary().clone())
+            .and_then(|data| data.element_data.borrow().styles.get_primary().cloned())
     }
 
     pub(crate) fn is_styled(&self) -> bool {

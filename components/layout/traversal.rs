@@ -59,6 +59,14 @@ where
             element_data.damage = RestyleDamage::reconstruct();
         }
 
+        let layout_node = layout_element.as_node();
+        let is_svg = layout_node.svg_data().is_some();
+        let old_svg_style = if is_svg {
+            element_data.styles.get_primary().cloned()
+        } else {
+            None
+        };
+
         recalc_style_at(
             self,
             traversal_data,
@@ -67,6 +75,20 @@ where
             &mut element_data,
             note_child,
         );
+
+        if is_svg &&
+            let Some(new) = element_data.styles.get_primary() &&
+            old_svg_style.as_ref().is_none_or(|old| {
+                old.clone_color() != new.clone_color() ||
+                    old.get_inherited_svg().fill != new.get_inherited_svg().fill ||
+                    old.get_inherited_svg().stroke != new.get_inherited_svg().stroke
+            })
+        {
+            // Repainting an existing image cannot update CSS paint embedded in its serialized SVG source.
+            self.context
+                .image_resolver
+                .queue_svg_element_for_serialization(layout_node);
+        }
     }
 
     #[inline]
