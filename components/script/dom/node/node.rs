@@ -118,7 +118,6 @@ use crate::dom::node::virtualmethods::{VirtualMethods, vtable_for};
 use crate::dom::pointerevent::{PointerEvent, PointerId};
 use crate::dom::range::WeakRangeVec;
 use crate::dom::raredata::NodeRareData;
-use crate::dom::servoparser::html::HtmlSerialize;
 use crate::dom::servoparser::serialize_html_fragment;
 use crate::dom::shadowroot::{IsUserAgentWidget, ShadowRoot};
 use crate::dom::text::Text;
@@ -3405,11 +3404,7 @@ impl Node {
         traversal_scope: xml_serialize::TraversalScope,
     ) -> Fallible<DOMString> {
         let mut writer = vec![];
-        xml_serialize::serialize(
-            &mut writer,
-            &HtmlSerialize::new(self),
-            xml_serialize::SerializeOpts { traversal_scope },
-        )
+        crate::dom::servoparser::xml_namespace::serialize(&mut writer, self, traversal_scope)
         .map_err(|error| {
             error!("Cannot serialize node: {error}");
             Error::InvalidState(Some("Cannot serialize node".into()))

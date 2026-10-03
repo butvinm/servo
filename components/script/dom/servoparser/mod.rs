@@ -104,6 +104,7 @@ pub(crate) mod encoding;
 pub(crate) mod html;
 mod prefetch;
 mod xml;
+pub(crate) mod xml_namespace;
 
 use encoding::{NetworkDecoderState, NetworkSink};
 pub(crate) use html::serialize_html_fragment;

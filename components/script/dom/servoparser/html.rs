@@ -128,9 +128,13 @@ impl Tokenizer {
 }
 
 /// <https://html.spec.whatwg.org/multipage/#html-fragment-serialisation-algorithm>
-fn start_element<S: Serializer>(element: &Element, serializer: &mut S) -> io::Result<()> {
+fn start_element<S: Serializer>(
+    element: &Element,
+    serializer: &mut S,
+    preserve_namespaces: bool,
+) -> io::Result<()> {
     let name = QualName::new(
-        None,
+        if preserve_namespaces { element.prefix().as_ref().cloned() } else { None },
         element.namespace().clone(),
         element.local_name().clone(),
     );
@@ -149,7 +153,11 @@ fn start_element<S: Serializer>(element: &Element, serializer: &mut S) -> io::Re
 
     // Collect all the "normal" attributes
     attributes.extend(element.attrs().borrow().iter().map(|attr| {
-        let qname = QualName::new(None, attr.namespace().clone(), attr.local_name().clone());
+        let qname = QualName::new(
+            if preserve_namespaces { attr.prefix().cloned() } else { None },
+            attr.namespace().clone(),
+            attr.local_name().clone(),
+        );
         let value = attr.value().clone();
         (qname, value)
     }));
@@ -285,6 +293,20 @@ pub(crate) fn serialize_html_fragment<S: Serializer>(
     serialize_shadow_roots: bool,
     shadow_roots: Vec<DomRoot<ShadowRoot>>,
 ) -> io::Result<()> {
+    serialize_fragment(
+        cx, node, serializer, traversal_scope, serialize_shadow_roots, shadow_roots, false,
+    )
+}
+
+fn serialize_fragment<S: Serializer>(
+    cx: &mut js::context::JSContext,
+    node: &Node,
+    serializer: &mut S,
+    traversal_scope: TraversalScope,
+    serialize_shadow_roots: bool,
+    shadow_roots: Vec<DomRoot<ShadowRoot>>,
+    preserve_namespaces: bool,
+) -> io::Result<()> {
     let iter = SerializationIterator::new(
         cx,
         node,
@@ -296,7 +318,7 @@ pub(crate) fn serialize_html_fragment<S: Serializer>(
     for cmd in iter {
         match cmd {
             SerializationCommand::OpenElement(n) => {
-                start_element(&n, serializer)?;
+                start_element(&n, serializer, preserve_namespaces)?;
             },
             SerializationCommand::CloseElement(name) => {
                 serializer.end_elem(name)?;
@@ -368,11 +390,16 @@ pub(crate) fn serialize_html_fragment<S: Serializer>(
 
 pub(crate) struct HtmlSerialize<'a> {
     node: &'a Node,
+    preserve_namespaces: bool,
 }
 
 impl<'a> HtmlSerialize<'a> {
     pub(crate) fn new(node: &'a Node) -> HtmlSerialize<'a> {
-        HtmlSerialize { node }
+        HtmlSerialize { node, preserve_namespaces: false }
+    }
+
+    pub(crate) fn new_xml(node: &'a Node) -> HtmlSerialize<'a> {
+        HtmlSerialize { node, preserve_namespaces: true }
     }
 }
 
@@ -385,6 +412,8 @@ impl Serialize for HtmlSerialize<'_> {
         // TODO: https://github.com/servo/servo/issues/42839
         let mut cx = unsafe { temp_cx() };
         let cx = &mut cx;
-        serialize_html_fragment(cx, self.node, serializer, traversal_scope, false, vec![])
+        serialize_fragment(
+            cx, self.node, serializer, traversal_scope, false, vec![], self.preserve_namespaces,
+        )
     }
 }
