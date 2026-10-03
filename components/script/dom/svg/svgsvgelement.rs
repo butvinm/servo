@@ -126,8 +126,19 @@ impl SVGSVGElement {
         use_element: &Element,
         root_node: &Node,
     ) {
-        let href = use_element.get_string_attribute(&local_name!("href"));
-        let Some(id_string) = href.str().strip_prefix("#").map(DOMString::from) else {
+        // An unnamespaced href takes precedence even when empty; use xlink:href only when href is absent.
+        let Some(href) = use_element
+            .get_attribute_string_value(&local_name!("href"))
+            .or_else(|| {
+                use_element.get_attribute_string_value_with_namespace(
+                    &ns!(xlink),
+                    &local_name!("href"),
+                )
+            })
+        else {
+            return;
+        };
+        let Some(id_string) = href.strip_prefix("#").map(DOMString::from) else {
             return;
         };
 
