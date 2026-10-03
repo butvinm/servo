@@ -132,7 +132,8 @@ jobs:
       build-libservo: ${{ inputs.build-libservo }}
       wpt-args: ${{ inputs.wpt-args }}
       bencher: ${{ inputs.bencher }}
-      coverage: ${{ inputs.coverage }}
+      # Manual dispatch has no coverage input, and an empty value fails the reusable workflow's boolean input.
+      coverage: ${{ inputs.coverage == true }}
       capi: ${{ inputs.capi }}
 
   wpt-2020:
