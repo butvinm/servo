@@ -98,6 +98,7 @@ use storage_traits::StorageThreads;
 use storage_traits::webstorage_thread::WebStorageType;
 use style::dom::OpaqueNode;
 use style::error_reporting::{ContextualParseError, ParseErrorReporter};
+use style::invalidation::element::restyle_hints::RestyleHint;
 use style::properties::PropertyId;
 use style::properties::style_structs::Font;
 use style::selector_parser::PseudoElement;
@@ -2690,18 +2691,21 @@ impl Window {
                 document.dirty_all_nodes(cx.no_gc());
             }
 
-            // `:has()` can make any element depend on its descendants and later siblings,
-            // and relative selector invalidation is not implemented yet,
-            // so rematch selectors on the whole document whenever anything needs a restyle.
-            if pref!(layout_css_has_selector_enabled) {
-                document.dirty_all_nodes(cx.no_gc());
+            // Until relative selector invalidation is implemented, `:has()` requires selector rematching across the document on every normal restyle.
+            // Queue a subtree hint without adding reconstruction damage or discarding cached text shaping.
+            let rematch_all = pref!(layout_css_has_selector_enabled);
+            if rematch_all && let Some(root) = document.GetDocumentElement() {
+                document
+                    .ensure_pending_restyle(&root)
+                    .hint
+                    .insert(RestyleHint::restyle_subtree());
             }
 
             let stylesheets_changed = document.flush_stylesheets_for_reflow();
             let pending_restyles = document.drain_pending_restyles(cx.no_gc());
             let dirty_root = document
                 .take_dirty_root()
-                .filter(|_| !stylesheets_changed)
+                .filter(|_| !stylesheets_changed && !rematch_all)
                 .or_else(|| document.GetDocumentElement())
                 .map(|root| root.upcast::<Node>().to_trusted_node_address());
 
