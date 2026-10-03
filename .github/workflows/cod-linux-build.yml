@@ -1,0 +1,59 @@
+# Fork-only Linux build for the cod/gitlab-fixes branch.
+# Servo's linux.yml -> linux-common.yml chain does not start on manual dispatch in this fork, so this mirrors its build steps without runner selection.
+name: Cod Linux build
+
+# Manual dispatch needs the file on the fork's default branch, so builds are started by pushing to cod/linux-build instead.
+on:
+  push:
+    branches: ["cod/linux-build"]
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  RUST_BACKTRACE: 1
+  SHELL: /bin/bash
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
+  CCACHE: "sccache"
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  build:
+    name: Linux build (release)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: servo/ci-runners/actions/checkout@a05e7e830e3f4d4c71bdc5a38f003f052b72668c
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          large-packages: false
+          swap-storage: false
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "20.1"
+          directory: ${{ runner.temp }}/llvm
+      - name: Set LIBCLANG_PATH
+        run: echo "LIBCLANG_PATH=${LLVM_PATH}/lib" >> $GITHUB_ENV
+      - name: Setup Python
+        uses: ./.github/actions/setup-python
+      - name: Bootstrap dependencies
+        run: |
+          sudo apt update
+          ./mach bootstrap --yes --skip-lints --skip-nextest
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+      - name: Build
+        run: ./mach build --locked --profile release
+      - name: Smoketest
+        run: xvfb-run ./mach smoketest --profile release
+      - name: Package
+        run: ./mach package --profile release
+      - name: Upload package
+        uses: actions/upload-artifact@v7
+        with:
+          name: cod-servo-linux-x86_64-release
+          path: target/release/servo-tech-demo.tar.gz
