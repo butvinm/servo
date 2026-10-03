@@ -14,6 +14,7 @@ use servo_url::ServoUrl;
 use style::attr::AttrValue;
 use style::parser::ParserContext;
 use style::stylesheets::Origin;
+use style::values::computed::color::Color;
 use style::values::computed::svg::SVGPaintKind;
 use style::values::specified::LengthPercentage;
 use style_traits::{ParsingMode, ToCss};
@@ -111,9 +112,16 @@ impl SVGSVGElement {
             let inherited_svg = style.get_inherited_svg();
             for (name, paint) in [("fill", &inherited_svg.fill), ("stroke", &inherited_svg.stroke)] {
                 // Paint-server URLs need document-to-image URL rebasing; preserve their existing attributes for now.
-                if matches!(&paint.kind, SVGPaintKind::None | SVGPaintKind::Color(..)) {
-                    inline_style.push_str(&format!("{name}:{} !important;", paint.to_css_string()));
-                }
+                let value = match &paint.kind {
+                    SVGPaintKind::None => "none".to_owned(),
+                    // Stylo serializes this as lowercase currentcolor, but the
+                    // SVG decoder recognizes only currentColor. Keep the keyword
+                    // so descendants can still resolve it against their own color.
+                    SVGPaintKind::Color(Color::CurrentColor) => "currentColor".to_owned(),
+                    SVGPaintKind::Color(..) => paint.to_css_string(),
+                    _ => continue,
+                };
+                inline_style.push_str(&format!("{name}:{value} !important;"));
             }
             cloned_element.set_string_attribute(cx, &local_name!("style"), inline_style.into());
         }
